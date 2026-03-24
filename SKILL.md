@@ -1,6 +1,11 @@
 ---
 name: yby6-video-parser
 description: 此技能用于解析短视频链接，支持解析抖音、快手、B站等多个主流平台的短视频和图文链接，并能自动提取语音内容转录为文字。适用于需要批量获取视频元数据或将视频内容转为文本的场景时使用此 skill。
+env:
+  - SILICONFLOW_API_KEY (Optional, transcription is required and mandatory)
+  - parse_api_url (optional)
+binaries:
+  - ffmpeg
 ---
 
 # 视频解析与转录技能
@@ -39,7 +44,7 @@ pip install -r requirements.txt
 复制一份项目根目录当中的`.env.example` 为 `.env` 文件：
 
 ```env
-# SiliconFlow API Key (必填，用于视频转录功能)
+# SiliconFlow API Key (可选，需要转录必填)
 # 获取地址: https://siliconflow.cn/
 api_key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
