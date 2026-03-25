@@ -6,13 +6,42 @@
 
 ## 核心功能
 
-- **视频元数据解析**: 支持通过分享链接或视频ID解析 20+ 个主流平台
+- **视频元数据解析与下载**: 支持通过分享链接或视频ID解析 20+ 个主流平台，可将视频下载到本地
 - **语音转录**: 自动将视频中的语音内容转换为文本
 - **图集支持**: 支持解析图文笔记和图集内容
 - **双模式解析**: 支持内置解析器和外部 API 两种模式
 - **批量处理**: 提供异步接口，支持批量解析
 
 ## 快速开始
+
+### 环境前置要求
+
+**重要提示**：使用本技能前，请确保满足以下环境要求：
+
+1. **Python 环境**: Python 3.10 或更高版本
+2. **ffmpeg 工具（必需）**:
+   - **仅视频解析功能**：不需要 ffmpeg
+   - **视频语音转录功能**：必须安装 ffmpeg 并添加到系统环境变量
+
+#### ffmpeg 安装方法
+
+**Windows 系统**:
+- 访问 https://www.gyan.dev/ffmpeg/builds/ 下载
+- 推荐下载：`ffmpeg-git-full.7z` 或 `ffmpeg-release-essentials.zip`
+- 解压到固定目录，例如：`C:\ffmpeg`
+- 将 `C:\ffmpeg\bin` 添加到系统环境变量 PATH 中
+- 验证安装：在命令行运行 `ffmpeg -version`
+
+**macOS 系统**:
+```bash
+brew install ffmpeg
+```
+
+**Linux 系统**:
+```bash
+sudo apt install ffmpeg  # Ubuntu/Debian
+sudo yum install ffmpeg  # CentOS/RHEL
+```
 
 ### 1. 安装依赖
 
@@ -29,6 +58,9 @@ pip install -r requirements.txt
 api_key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # 视频转录模型 (默认: FunAudioLLM/SenseVoiceSmall)
 model=FunAudioLLM/SenseVoiceSmall
+# 临时文件目录 (可选，默认: 当前项目下的 tmp 目录)
+# 可以配置为绝对路径或相对路径，例如: D:\temp 或 ./tmp
+temp_dir=
 # 是否自动清理临时文件 (true: 自动清理, false: 保留在 tmp/ 目录中)
 auto_cleanup_temp_files=false
 ```
@@ -42,14 +74,23 @@ auto_cleanup_temp_files=false
 python scripts/skill.py --list_platforms
 
 # 通过链接解析
-python scripts/skill.py --url "https://v.douyin.com/xxxxxx"
+python scripts/skill.py --url "https://v.douyin.com/D5jiZFDIWk4/"
+
+# 解析并下载视频到临时目录
+python scripts/skill.py --url "https://v.douyin.com/D5jiZFDIWk4/" --download
+
+# 解析并下载视频，下载后自动清理临时文件（脱裤子放屁）
+python scripts/skill.py --url "https://v.douyin.com/D5jiZFDIWk4/" --download --cleanup
+
+# 自定义下载参数（前缀、超时时间、重试次数）
+python scripts/skill.py --url "https://v.douyin.com/D5jiZFDIWk4/" --download --prefix my_video --timeout 600 --retry 5
 ```
 
 #### 视频语音转录
 
 ```bash
 # 基础转录
-python scripts/transcribe.py --url "https://v.douyin.com/xxxxxx"
+python scripts/transcribe.py --url "https://v.douyin.com/D5jiZFDIWk4/"
 
 # 指定 API Key 和模型
 python scripts/transcribe.py --url "https://www.xiaohongshu.com/explore/xxxx" --api-key sk-your-key --model FunAudioLLM/SenseVoiceSmall
@@ -62,10 +103,15 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
 
 ### `scripts/skill.py`
 
-| 参数 | 说明 | 必需 |
-|------|------|------|
-| `--url` | 要解析的视频分享链接 | 否 |
-| `--list_platforms` | 列出所有支持的平台 | 否 |
+| 参数 | 说明 | 必需 | 默认值 |
+|------|------|------|--------|
+| `--url` | 要解析的视频分享链接 | 否 | 无 |
+| `--list_platforms` | 列出所有支持的平台 | 否 | 无 |
+| `--download` | 下载视频到临时目录 | 否 | false |
+| `--prefix` | 临时目录前缀 | 否 | video_ |
+| `--timeout` | 下载超时时间（秒） | 否 | 300 |
+| `--retry` | 失败重试次数 | 否 | 3 |
+| `--cleanup` | 下载完成后自动清理临时文件 | 否 | false |
 
 ### `scripts/transcribe.py`
 
@@ -98,6 +144,8 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
 
 ### 视频解析结果
 
+仅解析模式（不带 `--download` 参数）：
+
 ```json
 {
   "video_url": "https://example.com/video.mp4",
@@ -114,6 +162,32 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
     "uid": "作者ID",
     "name": "作者昵称",
     "avatar": "https://example.com/avatar.jpg"
+  }
+}
+```
+
+解析并下载模式（带 `--download` 参数）：
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "parse_info": {
+      "video_url": "https://example.com/video.mp4",
+      "cover_url": "https://example.com/cover.jpg",
+      "title": "视频标题",
+      "author": {
+        "uid": "作者ID",
+        "name": "作者昵称",
+        "avatar": "https://example.com/avatar.jpg"
+      }
+    },
+    "download_info": {
+      "temp_dir": "临时目录路径",
+      "video_path": "视频文件路径",
+      "file_size": 文件大小
+    }
   }
 }
 ```
@@ -152,6 +226,26 @@ print(result)
 # 获取支持的平台
 platforms = get_supported_platforms()
 print(f"支持的平台: {', '.join(platforms)}")
+```
+
+### 视频下载
+
+```python
+from scripts.skill import parse_and_download_video_sync
+
+# 解析并下载视频
+result = parse_and_download_video_sync(
+    share_url="https://v.douyin.com/xxxxxx",
+    prefix="video_",
+    timeout=300,
+    retry_count=3,
+    verify=True
+)
+
+if result["code"] == 200:
+    print(f"视频已下载到: {result['data']['video_path']}")
+    print(f"临时目录: {result['data']['temp_dir']}")
+    print(f"文件大小: {result['data']['file_size']} 字节")
 ```
 
 ### 语音转录

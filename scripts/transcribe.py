@@ -12,10 +12,19 @@ from pathlib import Path
 from urllib.parse import quote
 from datetime import datetime
 
+# 导入视频下载模块
+from video_downloader import (
+    download_video,
+    download_video_with_tempdir,
+    DownloadProgress,
+    DEFAULT_USER_AGENT,
+    DEFAULT_TIMEOUT,
+    DEFAULT_RETRY_COUNT,
+)
+
 # 默认配置
 DEFAULT_API_BASE_URL = "https://api.siliconflow.cn/v1/audio/transcriptions"
 DEFAULT_MODEL = "FunAudioLLM/SenseVoiceSmall"
-USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/121.0.2277.107 Version/17.0 Mobile/15E148 Safari/604.1"
 
 
 def parse_video_url_local(share_url):
@@ -66,9 +75,20 @@ def create_tmp_dir(title):
     """
     创建临时目录，命名为 tmp/视频标题
     """
+    from video_downloader import get_temp_dir
+    
     # 清理文件名中的非法字符，包括换行符
     safe_title = re.sub(r'[\\/:*?"<>|\n\r\t]', '_', title)[:50]  # 限制长度
-    tmp_dir = Path("tmp") / safe_title
+    
+    # 获取配置的临时目录
+    config_temp_dir = get_temp_dir()
+    if config_temp_dir:
+        # 使用配置的目录
+        tmp_dir = config_temp_dir / safe_title
+    else:
+        # 使用项目根目录下的 tmp 文件夹
+        tmp_dir = Path("tmp") / safe_title
+    
     tmp_dir.mkdir(parents=True, exist_ok=True)
     return tmp_dir
 
@@ -129,26 +149,6 @@ def save_to_markdown(result, original_url, output_dir=None):
         f.write(md_content)
 
     return file_path
-
-
-def download_video(video_url, output_path):
-    """
-    下载视频文件到本地
-    """
-    print(f"正在下载视频: {video_url} -> {output_path}")
-    headers = {"User-Agent": USER_AGENT}
-    try:
-        response = requests.get(video_url, headers=headers, stream=True, timeout=300)
-        response.raise_for_status()
-        with open(output_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        print("视频下载完成")
-        return True
-    except Exception as e:
-        print(f"下载视频失败: {e}")
-        return False
 
 
 def extract_audio(video_path, audio_path):
@@ -283,13 +283,26 @@ def process_video_transcription(video_url_to_parse, api_key, model=DEFAULT_MODEL
         audio_file = tmp_dir / f"audio_{temp_id}.mp3"
 
         try:
-            # 下载
-            if download_video(video_url, video_file):
-                # 提取音频
-                if extract_audio(video_file, audio_file):
-                    # 转录
-                    text = transcribe_audio(audio_file, api_key, model)
-                    final_result["transcription"] = text
+            # 下载视频（使用新的下载模块）
+            def progress_callback(progress: DownloadProgress):
+                print(f"下载进度: {progress.progress:.1f}% ({progress.downloaded}/{progress.total} 字节)")
+
+            video_path = download_video(
+                url=video_url,
+                output_dir=tmp_dir,
+                filename=f"video_{temp_id}.mp4",
+                timeout=DEFAULT_TIMEOUT,
+                retry_count=DEFAULT_RETRY_COUNT,
+                on_progress=progress_callback,
+                user_agent=DEFAULT_USER_AGENT,
+                verify=True
+            )
+
+            # 提取音频
+            if extract_audio(video_path, audio_file):
+                # 转录
+                text = transcribe_audio(audio_file, api_key, model)
+                final_result["transcription"] = text
         finally:
             # 根据 auto_cleanup 配置决定是否删除临时文件
             if auto_cleanup:

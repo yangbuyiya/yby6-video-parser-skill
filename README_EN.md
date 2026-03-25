@@ -1,18 +1,47 @@
 # Video Parser Skill
 
-A video parsing and transcription tool that extracts video information from multiple platform sharing links and converts video speech content to text.
+A video parsing and transcription tool that extracts video information from multiple platform sharing links, downloads videos to local storage, and converts video speech content to text.
 
 > **This Skill is refactored based on the [parse-video-py](https://github.com/wujunwei928/parse-video-py) project. Thanks to the original author for their contribution.**
 
 ## Core Features
 
-- **Video Metadata Parsing**: Supports parsing 20+ mainstream platforms via sharing links or video IDs
+- **Video Metadata Parsing and Downloading**: Supports parsing 20+ mainstream platforms via sharing links or video IDs, and can download videos to local storage
 - **Speech Transcription**: Automatically converts video speech content to text
 - **Image Gallery Support**: Supports parsing image notes and gallery content
 - **Dual Mode Parsing**: Supports both built-in parser and external API modes
 - **Batch Processing**: Provides asynchronous interface for batch parsing
 
 ## Quick Start
+
+### Prerequisites
+
+**Important Note**: Before using this Skill, please ensure the following requirements are met:
+
+1. **Python Environment**: Python 3.10 or higher
+2. **ffmpeg Tool (Required)**:
+   - **For video parsing only**: ffmpeg is NOT required
+   - **For video speech transcription**: ffmpeg MUST be installed and added to system environment variables
+
+#### ffmpeg Installation Methods
+
+**Windows System**:
+- Visit https://www.gyan.dev/ffmpeg/builds/ to download
+- Recommended downloads: `ffmpeg-git-full.7z` or `ffmpeg-release-essentials.zip`
+- Extract to a fixed directory, e.g., `C:\ffmpeg`
+- Add `C:\ffmpeg\bin` to system PATH environment variable
+- Verify installation: Run `ffmpeg -version` in command line
+
+**macOS System**:
+```bash
+brew install ffmpeg
+```
+
+**Linux System**:
+```bash
+sudo apt install ffmpeg  # Ubuntu/Debian
+sudo yum install ffmpeg  # CentOS/RHEL
+```
 
 ### 1. Install Dependencies
 
@@ -29,6 +58,9 @@ Create a `.env` file:
 api_key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Video transcription model (default: FunAudioLLM/SenseVoiceSmall)
 model=FunAudioLLM/SenseVoiceSmall
+# Temporary file directory (optional, default: tmp directory in current project)
+# Can be configured as absolute path or relative path, e.g.: D:\temp or ./tmp
+temp_dir=
 # Auto cleanup temporary files (true: auto cleanup, false: keep in tmp/ directory)
 auto_cleanup_temp_files=false
 ```
@@ -43,6 +75,15 @@ python scripts/skill.py --list_platforms
 
 # Parse by URL
 python scripts/skill.py --url "https://v.douyin.com/xxxxxx"
+
+# Parse and download video to temporary directory
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download
+
+# Parse and download video, auto cleanup temporary files after download
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download --cleanup
+
+# Custom download parameters (prefix, timeout, retry count)
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download --prefix my_video --timeout 600 --retry 5
 ```
 
 #### Video Speech Transcription
@@ -62,10 +103,15 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
 
 ### `scripts/skill.py`
 
-| Parameter | Description | Required |
-|-----------|-------------|----------|
-| `--url` | Video sharing URL to parse | No |
-| `--list_platforms` | List all supported platforms | No |
+| Parameter | Description | Required | Default |
+|-----------|-------------|----------|---------|
+| `--url` | Video sharing URL to parse | No | None |
+| `--list_platforms` | List all supported platforms | No | None |
+| `--download` | Download video to temporary directory | No | false |
+| `--prefix` | Temporary directory prefix | No | video_ |
+| `--timeout` | Download timeout in seconds | No | 300 |
+| `--retry` | Retry count on failure | No | 3 |
+| `--cleanup` | Auto cleanup temporary files after download | No | false |
 
 ### `scripts/transcribe.py`
 
@@ -82,21 +128,23 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
 
 | Platform | Identifier | Platform | Identifier |
 |----------|------------|----------|------------|
-| 抖音 | douyin | 快手 | kuaishou |
-| 小红书 | redbook | 哔哩哔哩 | bilibili |
-| 微博 | weibo | 皮皮虾 | pipixia |
-| 西瓜视频 | xigua | 微视 | weishi |
-| 绿洲 | lvzhou | 最右 | zuiyou |
-| 度小视 | quanmin | 梨视频 | lishipin |
-| 皮皮搞笑 | pipigaoxiao | 虎牙 | huya |
-| A站 | acfun | 逗拍 | doupai |
-| 美拍 | meipai | 全民K歌 | quanminkge |
-| 六间房 | sixroom | 新片场 | xinpianchang |
-| 好看视频 | haokan | Twitter | twitter |
+| Douyin | douyin | Kuaishou | kuaishou |
+| Xiaohongshu | redbook | Bilibili | bilibili |
+| Weibo | weibo | Pipixia | pipixia |
+| Xigua Video | xigua | Weishi | weishi |
+| Lvzhou | lvzhou | Zuiyou | zuiyou |
+| Quanmin | quanmin | Lishipin | lishipin |
+| Pipigaoxiao | pipigaoxiao | Huya | huya |
+| Acfun | acfun | Doupai | doupai |
+| Meipai | meipai | Quanminkge | quanminkge |
+| Sixroom | sixroom | Xinpianchang | xinpianchang |
+| Haokan Video | haokan | Twitter | twitter |
 
 ## Output Format
 
 ### Video Parsing Result
+
+**Parse only mode (without `--download` parameter)**:
 
 ```json
 {
@@ -114,6 +162,32 @@ python scripts/transcribe.py --url "https://www.bilibili.com/video/xxxx" --auto_
     "uid": "作者ID",
     "name": "作者昵称",
     "avatar": "https://example.com/avatar.jpg"
+  }
+}
+```
+
+**Parse and download mode (with `--download` parameter)**:
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "parse_info": {
+      "video_url": "https://example.com/video.mp4",
+      "cover_url": "https://example.com/cover.jpg",
+      "title": "视频标题",
+      "author": {
+        "uid": "作者ID",
+        "name": "作者昵称",
+        "avatar": "https://example.com/avatar.jpg"
+      }
+    },
+    "download_info": {
+      "temp_dir": "临时目录路径",
+      "video_path": "视频文件路径",
+      "file_size": 文件大小
+    }
   }
 }
 ```
@@ -151,7 +225,27 @@ print(result)
 
 # Get supported platforms
 platforms = get_supported_platforms()
-print(f"支持的平台: {', '.join(platforms)}")
+print(f"Supported platforms: {', '.join(platforms)}")
+```
+
+### Video Downloading
+
+```python
+from scripts.skill import parse_and_download_video_sync
+
+# Parse and download video
+result = parse_and_download_video_sync(
+    share_url="https://v.douyin.com/xxxxxx",
+    prefix="video_",
+    timeout=300,
+    retry_count=3,
+    verify=True
+)
+
+if result["code"] == 200:
+    print(f"Video downloaded to: {result['data']['video_path']}")
+    print(f"Temporary directory: {result['data']['temp_dir']}")
+    print(f"File size: {result['data']['file_size']} bytes")
 ```
 
 ### Speech Transcription
@@ -169,7 +263,7 @@ result = process_video_transcription(
 
 # Save as Markdown
 md_file = save_to_markdown(result, "https://v.douyin.com/xxxxxx")
-print(f"Markdown 文件已保存: {md_file}")
+print(f"Markdown file saved: {md_file}")
 ```
 
 ### Asynchronous Batch Processing

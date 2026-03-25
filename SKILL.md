@@ -1,11 +1,6 @@
 ---
 name: yby6-video-parser
 description: 此技能用于解析短视频链接，支持解析抖音、快手、B站等多个主流平台的短视频和图文链接，并能自动提取语音内容转录为文字。适用于需要批量获取视频元数据或将视频内容转为文本的场景时使用此 skill。
-env:
-  - SILICONFLOW_API_KEY (Optional, transcription is required and mandatory)
-  - parse_api_url (optional)
-binaries:
-  - ffmpeg
 ---
 
 # 视频解析与转录技能
@@ -23,15 +18,44 @@ binaries:
 
 ## 核心功能
 
-### 功能一：视频元数据解析
+### 功能一：视频元数据解析与下载
 
-使用内置的解析器直接从视频分享链接中提取视频信息，无需依赖外部 API。
+使用内置的解析器直接从视频分享链接中提取视频信息，支持将视频下载到本地临时目录。也可下载视频到本地临时目录，无需依赖外部 API。
 
 ### 功能二：视频语音转录
 
 通过自动化流程：解析视频 → 下载视频 → 提取音频 → 语音转录 → 生成 Markdown 报告。
 
 ## 如何使用
+
+### 环境前置要求
+
+**重要提示**：使用本技能前，请确保满足以下环境要求：
+
+1. **Python 环境**: Python 3.10 或更高版本
+2. **ffmpeg 工具（必需）**:
+   - **仅视频解析功能**：不需要 ffmpeg
+   - **视频语音转录功能**：必须安装 ffmpeg 并添加到系统环境变量
+
+#### ffmpeg 安装方法
+
+**Windows 系统**:
+- 访问 https://www.gyan.dev/ffmpeg/builds/ 下载
+- 推荐下载：`ffmpeg-git-full.7z` 或 `ffmpeg-release-essentials.zip`
+- 解压到固定目录，例如：`C:\ffmpeg`
+- 将 `C:\ffmpeg\bin` 添加到系统环境变量 PATH 中
+- 验证安装：在命令行运行 `ffmpeg -version`
+
+**macOS 系统**:
+```bash
+brew install ffmpeg
+```
+
+**Linux 系统**:
+```bash
+sudo apt install ffmpeg  # Ubuntu/Debian
+sudo yum install ffmpeg  # CentOS/RHEL
+```
 
 ### 1. 安装依赖
 
@@ -44,7 +68,7 @@ pip install -r requirements.txt
 复制一份项目根目录当中的`.env.example` 为 `.env` 文件：
 
 ```env
-# SiliconFlow API Key (可选，需要转录必填)
+# SiliconFlow API Key (必填，用于视频转录功能)
 # 获取地址: https://siliconflow.cn/
 api_key=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -60,6 +84,11 @@ parse_api_url=
 
 # SiliconFlow ASR API 地址 (可选，默认: https://api.siliconflow.cn/v1/audio/transcriptions)
 siliconflow_api_url=https://api.siliconflow.cn/v1/audio/transcriptions
+
+# 临时文件目录 (可选，默认: 当前项目下的 tmp 目录)
+# 可以配置为绝对路径或相对路径，例如: D:\temp 或 ./tmp
+# 留空则使用项目根目录下的 tmp 文件夹
+temp_dir=
 
 # 是否自动清理临时文件 (可选，默认: false)
 # true: 自动删除临时文件（视频和音频）
@@ -82,10 +111,15 @@ python scripts/skill.py [选项]
 
 **参数说明**:
 
-| 参数                 | 说明         | 必需 |
-| ------------------ | ---------- | -- |
-| `--url`            | 要解析的视频分享链接 | 否  |
-| `--list_platforms` | 列出所有支持的平台  | 否  |
+| 参数                 | 说明                         | 必需  | 默认值              |
+| ------------------ | -------------------------- | --- | ----------------- |
+| `--url`            | 要解析的视频分享链接                 | 否   | 无                 |
+| `--list_platforms` | 列出所有支持的平台                  | 否   | 无                 |
+| `--download`       | 下载视频到临时目录                  | 否   | false             |
+| `--prefix`         | 临时目录前缀                     | 否   | video_            |
+| `--timeout`        | 下载超时时间（秒）                  | 否   | 300               |
+| `--retry`          | 失败重试次数                      | 否   | 3                 |
+| `--cleanup`        | 下载完成后自动清理临时文件              | 否   | false             |
 
 **常用示例**:
 
@@ -95,9 +129,20 @@ python scripts/skill.py --list_platforms
 
 # 2) 通过分享链接解析视频
 python scripts/skill.py --url "https://v.douyin.com/xxxxxx"
+
+# 3) 解析并下载视频到临时目录
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download
+
+# 4) 解析并下载视频，下载后自动清理临时文件
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download --cleanup
+
+# 5) 自定义下载参数（前缀、超时时间、重试次数）
+python scripts/skill.py --url "https://v.douyin.com/xxxxxx" --download --prefix my_video --timeout 600 --retry 5
 ```
 
 **输出格式**:
+
+仅解析模式（不带 `--download` 参数）：
 
 ```json
 {
@@ -115,6 +160,32 @@ python scripts/skill.py --url "https://v.douyin.com/xxxxxx"
     "uid": "作者ID",
     "name": "作者昵称",
     "avatar": "https://example.com/avatar.jpg"
+  }
+}
+```
+
+解析并下载模式（带 `--download` 参数）：
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "parse_info": {
+      "video_url": "https://example.com/video.mp4",
+      "cover_url": "https://example.com/cover.jpg",
+      "title": "视频标题",
+      "author": {
+        "uid": "作者ID",
+        "name": "作者昵称",
+        "avatar": "https://example.com/avatar.jpg"
+      }
+    },
+    "download_info": {
+      "temp_dir": "临时目录路径",
+      "video_path": "视频文件路径",
+      "file_size": 文件大小（字节）
+    }
   }
 }
 ```
